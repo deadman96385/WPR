@@ -876,7 +876,7 @@ namespace Microsoft.Xna.Framework
 				// Keyboard
 				if (evt.type == SDL.SDL_EventType.SDL_KEYDOWN)
 				{
-					if (evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK)
+					if (IsPhoneBackButton(evt.key.keysym.sym))
 					{
 						PhoneBackButtonPressed = true;
 					}
@@ -915,7 +915,7 @@ namespace Microsoft.Xna.Framework
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_KEYUP)
 				{
-					if (evt.key.keysym.sym == SDL.SDL_Keycode.SDLK_AC_BACK)
+					if (IsPhoneBackButton(evt.key.keysym.sym))
 					{
 						PhoneBackButtonPressed = false;
 					}
@@ -2355,6 +2355,24 @@ namespace Microsoft.Xna.Framework
 			return new Vector2(
 				(float)x * displayWidth / windowWidth,
 				(float)y * displayHeight / windowHeight);
+		}
+
+		/* The phone's back button is a hardware key that titles lean on
+		 * constantly: it dismisses their dialogs and walks back a screen, and
+		 * some dialogs offer no other way out. Tiger Woods is one of those, and
+		 * its on-screen alternative cannot fire because the raw touch sampler it
+		 * depends on is a stub in the shipped build.
+		 *
+		 * SDL only reports SDLK_AC_BACK, the browser-back key, which a normal
+		 * keyboard does not have, so on the desktop that button was unreachable
+		 * unless a mouse happened to carry a side button. Accept Escape as well:
+		 * a phone has no Escape key, so no title can be listening for one, and
+		 * it is the key a desktop user reaches for to back out.
+		 */
+		private static bool IsPhoneBackButton(SDL.SDL_Keycode key)
+		{
+			return key == SDL.SDL_Keycode.SDLK_AC_BACK
+				|| key == SDL.SDL_Keycode.SDLK_ESCAPE;
 		}
 
 		public static TouchPanelCapabilities GetTouchCapabilities()
