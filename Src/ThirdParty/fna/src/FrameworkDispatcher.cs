@@ -11,7 +11,6 @@
 using System.Collections.Generic;
 
 using Microsoft.Xna.Framework.Audio;
-using Microsoft.Xna.Framework.Input.Touch;
 using MediaPlayer = Microsoft.Xna.Framework.Media.MediaPlayer;
 #endregion
 
@@ -66,10 +65,11 @@ namespace Microsoft.Xna.Framework
 				MediaStateChanged = false;
 			}
 
-			if (TouchPanel.TouchDeviceExists)
-			{
-				TouchPanel.Update();
-			}
+			/* The touch panel is serviced once per frame from Game.Tick. XNA's
+			 * FrameworkDispatcher only pumps media and audio events, and calling
+			 * TouchPanel.Update here as well would advance the touch state twice
+			 * in a frame.
+			 */
 		}
 
 		#endregion

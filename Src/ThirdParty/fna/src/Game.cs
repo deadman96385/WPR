@@ -516,6 +516,15 @@ namespace Microsoft.Xna.Framework
 				ref textInputSuppress
 			);
 
+			/* Service the touch panel here rather than from Game.Update, which
+			 * titles are free to override without chaining. On the phone the
+			 * panel is driven by the framework, so GetState must not depend on
+			 * a game calling base.Update. Exactly one call per frame: a second
+			 * one would age this frame's Pressed into Moved before the game
+			 * ever polled it.
+			 */
+			TouchPanel.Update();
+
 			// Do not allow any update to take longer than our maximum.
 			if (accumulatedElapsedTime > MaxElapsedTime)
 			{

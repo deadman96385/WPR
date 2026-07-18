@@ -71,11 +71,13 @@ namespace Microsoft.Xna.Framework.Input.Touch
 		{
 			get => _MouseAsTouch;
 			set {
-				if (!value && TouchDeviceExists)
-				{
-					TouchDeviceExists = false;
-				}
-
+				/* A phone always has a touch panel. Windows only notices a real
+				 * touch screen once it is touched, but when the mouse is standing
+				 * in for one there is nothing to wait for, and leaving this false
+				 * until the first click made TouchCollection.IsConnected disagree
+				 * with the capabilities GetTouchCapabilities already reports.
+				 */
+				TouchDeviceExists = value;
 				_MouseAsTouch = value;
 			}
 		}
