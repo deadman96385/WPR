@@ -1,4 +1,4 @@
-﻿using WPR.WindowsCompability;
+using WPR.WindowsCompability;
 using WPR.Common;
 
 using Microsoft.EntityFrameworkCore;
@@ -206,11 +206,21 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public bool IsGuest => false;
 
+        /* There is a signed-in gamer, but no Xbox Live session behind it: the
+         * partner-token service is gone and every live call this facade offers
+         * is served from local data. Claiming a live session invites titles onto
+         * their online path, where the first live call then fails. Tiger Woods
+         * does exactly that, moving itself to a live sign-in state and issuing a
+         * leaderboard read that ends in its error state.
+         *
+         * Reporting a local sign-in is the honest answer and keeps those titles
+         * on the offline path they already have.
+         */
         public bool IsSignedInToLive
         {
             get
             {
-                return true;
+                return false;
             }
         }
 
