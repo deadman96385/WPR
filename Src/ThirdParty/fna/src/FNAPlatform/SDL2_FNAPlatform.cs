@@ -2332,6 +2332,31 @@ namespace Microsoft.Xna.Framework
 			return true;
 		}
 
+		/* SDL reports the cursor in window pixels, but TouchPanel positions are
+		 * display-space, exactly like the SDL_GetTouchFinger path below and the
+		 * faux-backbuffer scaling in Mouse.GetState. Scale here so a mouse-as-touch
+		 * tap and a gesture from the same click agree on where the finger landed.
+		 */
+		internal static Vector2 GetMouseTouchPosition(
+			int x,
+			int y,
+			int windowWidth,
+			int windowHeight,
+			int displayWidth,
+			int displayHeight)
+		{
+			if (windowWidth <= 0 || windowHeight <= 0
+				|| displayWidth <= 0 || displayHeight <= 0)
+			{
+				// Nothing sensible to scale against yet
+				return new Vector2(x, y);
+			}
+
+			return new Vector2(
+				(float)x * displayWidth / windowWidth,
+				(float)y * displayHeight / windowHeight);
+		}
+
 		public static TouchPanelCapabilities GetTouchCapabilities()
 		{
 			/* Take these reported capabilities with a grain of salt.
@@ -2361,7 +2386,13 @@ namespace Microsoft.Xna.Framework
 
 				if ((ButtonState)(flags & SDL.SDL_BUTTON_LMASK) == ButtonState.Pressed)
 				{
-					TouchPanel.SetFinger(0, 1, new Vector2(x, y));
+					TouchPanel.SetFinger(0, 1, GetMouseTouchPosition(
+						x,
+						y,
+						Mouse.INTERNAL_WindowWidth,
+						Mouse.INTERNAL_WindowHeight,
+						TouchPanel.DisplayWidth,
+						TouchPanel.DisplayHeight));
 				}
 				else
 				{
