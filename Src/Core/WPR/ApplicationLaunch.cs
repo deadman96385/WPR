@@ -130,9 +130,15 @@ namespace WPR
 #if !__MOBILE__
                     TouchPanel.MouseAsTouch = true;
 #endif
-                    TouchPanel.EnabledGestures = GestureType.DoubleTap | GestureType.Tap | GestureType.Hold |
-                        GestureType.HorizontalDrag | GestureType.VerticalDrag | GestureType.FreeDrag |
-                        GestureType.Pinch | GestureType.Flick | GestureType.DragComplete | GestureType.PinchComplete;
+                    /* Leave EnabledGestures at the XNA default of None and let the
+                     * title opt in, exactly as it would on the phone. Enabling every
+                     * gesture here produced samples that titles reading only
+                     * TouchPanel.GetState never dequeue, so the gesture queue grew for
+                     * the life of the process, and it forced DoubleTap on for titles
+                     * that deliberately leave it off: the detector answers a second tap
+                     * inside 300ms with a DoubleTap and suppresses the Tap, so quick
+                     * repeated taps went missing.
+                     */
 
                     GraphicsDeviceManager2.RequestOrientation = requestOrientation;
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
