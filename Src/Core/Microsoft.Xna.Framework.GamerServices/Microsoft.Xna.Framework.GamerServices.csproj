@@ -24,6 +24,10 @@
     <Folder Include="Migrations\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Lets the tests rebind the achievement database to a temporary data root. -->
+    <InternalsVisibleTo Include="WPR.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>

@@ -39,10 +39,26 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public string OwnProductId { get; set; }
 
-        public Stream GetPicture()
+        /* An achievement earned offline is recorded from the key the title
+         * awarded and has no artwork behind it, and a stored icon can go missing
+         * with the data root. Titles enumerate achievements and call this while
+         * building their list, so throwing here takes down that whole pass over
+         * a picture. Report the absence instead and let the caller decide.
+         */
+        public Stream? GetPicture()
         {
-            Stream res = new FileStream(Configuration.Current!.DataPath(_IconPath), FileMode.Open);
-            return res;
+            if (string.IsNullOrEmpty(_IconPath))
+            {
+                return null;
+            }
+
+            string path = Configuration.Current!.DataPath(_IconPath);
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         }
     }
 }

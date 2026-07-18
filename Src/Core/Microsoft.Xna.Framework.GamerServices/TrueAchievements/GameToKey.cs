@@ -58,5 +58,29 @@ namespace Microsoft.Xna.Framework.GamerServices.TrueAchievements
 
             return null;
         }
+
+        /* A title awards an achievement by its own key, so recording one earned
+         * offline means turning that key back into something worth showing. The
+         * mapping is stored the other way round because it was built to look a
+         * key up from a scraped display name, and it only covers the titles
+         * listed, so callers must be prepared for null.
+         */
+        public string? GetAchievementName(string productId, string key)
+        {
+            if (!AchievementNameToKeyMapping!.ContainsKey(productId))
+            {
+                return null;
+            }
+
+            foreach (KeyValuePair<string, string> pair in AchievementNameToKeyMapping[productId])
+            {
+                if (string.Equals(pair.Value, key, StringComparison.Ordinal))
+                {
+                    return pair.Key;
+                }
+            }
+
+            return null;
+        }
     }
 }

@@ -26,6 +26,15 @@ namespace Microsoft.Xna.Framework.GamerServices
             }
         }
 
+        /* Mirrors ApplicationContext: the cached instance binds to whichever data
+         * root was configured when it was first asked for, so a test that swaps
+         * roots has to drop it. */
+        internal static void ResetForTests()
+        {
+            _Current?.Dispose();
+            _Current = null;
+        }
+
         public AchievementContext()
         {
             Directory.CreateDirectory(Configuration.Current.DataPath(DatabaseFolder));

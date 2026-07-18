@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System;
 using System.Diagnostics;
+using System.IO;
 
 namespace Microsoft.Xna.Framework.GamerServices
 {
@@ -143,7 +144,43 @@ namespace Microsoft.Xna.Framework.GamerServices
                     Log.Warn(LogCategory.GamerServices, $"More then two achievements with key {achievementKey} exists!");
                 }
 
-                if (achievements.Count != 0)
+                if (achievements.Count == 0)
+                {
+                    /* Nothing populates this table offline, so awarding used to
+                     * find no row and silently do nothing: no record, no
+                     * notification, and an achievement that could never be
+                     * earned. The title has just told us the only thing that
+                     * cannot be derived, its own key, so record the award from
+                     * that. This works for any title because the key comes from
+                     * the title rather than from a catalogue of its content.
+                     *
+                     * The rest is left blank rather than invented. Score,
+                     * description, and artwork are properties of the achievement
+                     * as published, and a wrong score reads as fact. The
+                     * shipped mapping supplies a display name for the titles it
+                     * covers; elsewhere the key is shown, which is at least
+                     * true.
+                     */
+                    Achievement earned = new Achievement
+                    {
+                        Key = achievementKey,
+                        OwnProductId = Application.Current.ProductId,
+                        Name = ResolveAchievementName(achievementKey),
+                        Description = string.Empty,
+                        HowToEarn = string.Empty,
+                        _IconPath = string.Empty,
+                        DisplayBeforeEarned = true,
+                        GamerScore = 0,
+                        IsEarned = true,
+                        // Earned against local data, never against a live service.
+                        EarnedOnline = false,
+                        EarnedDateTime = DateTime.Now
+                    };
+
+                    await AchievementContext.Current!.Achievements!.AddAsync(earned);
+                    achievements.Add(earned);
+                }
+                else
                 {
                     foreach (Achievement achievement in achievements)
                     {
@@ -153,26 +190,42 @@ namespace Microsoft.Xna.Framework.GamerServices
                         }
 
                         achievement.IsEarned = true;
-                        achievement.EarnedOnline = true;
+                        achievement.EarnedOnline = false;
                         achievement.EarnedDateTime = DateTime.Now;
-                    }
-
-                    try
-                    {
-                        await NativeUI.NotificationManager.ShowNotification(new DesktopNotifications.Notification()
-                        {
-                            Title = Properties.Resources.AchievementUnlocked,
-                            Body = $"{achievements[0].GamerScore}G - {achievements[0].Name}",
-                            ImagePath = Configuration.Current!.DataPath(achievements[0]._IconPath),
-                            SoundUri = "AchievementUnlocked"
-                        }, DateTime.Now + TimeSpan.FromDays(1));
-                    } catch (Exception ex)
-                    {
-                        Log.Error(LogCategory.GamerServices, $"Fail to display Achievement notification with exception:\n {ex}");
                     }
                 }
 
                 await AchievementContext.Current!.SaveChangesAsync();
+
+                try
+                {
+                    Achievement announced = achievements[0];
+                    var notification = new DesktopNotifications.Notification()
+                    {
+                        Title = Properties.Resources.AchievementUnlocked,
+                        Body = announced.GamerScore > 0
+                            ? $"{announced.GamerScore}G - {announced.Name}"
+                            : announced.Name,
+                        SoundUri = "AchievementUnlocked"
+                    };
+
+                    // Only point at artwork that is actually there.
+                    if (!string.IsNullOrEmpty(announced._IconPath))
+                    {
+                        string iconPath = Configuration.Current!.DataPath(announced._IconPath);
+                        if (File.Exists(iconPath))
+                        {
+                            notification.ImagePath = iconPath;
+                        }
+                    }
+
+                    await NativeUI.NotificationManager.ShowNotification(
+                        notification, DateTime.Now + TimeSpan.FromDays(1));
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(LogCategory.GamerServices, $"Fail to display Achievement notification with exception:\n {ex}");
+                }
 
                 if (callback != null)
                 {
@@ -186,11 +239,45 @@ namespace Microsoft.Xna.Framework.GamerServices
             });
         }
 
+        /* The shipped mapping covers a handful of titles and is read from disk,
+         * so neither a miss nor a failure to load it should cost the award. The
+         * key is always shown when no better name is known.
+         */
+        private static string ResolveAchievementName(string achievementKey)
+        {
+            try
+            {
+                return Researcher.GetAchievementName(Application.Current.ProductId!, achievementKey)
+                    ?? achievementKey;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(LogCategory.GamerServices, $"Fail to resolve achievement name with exception:\n {ex}");
+                return achievementKey;
+            }
+        }
+
+        /* End waits for the operation to finish, as the pattern requires. This
+         * did nothing, so AwardAchievement started the write and returned
+         * immediately: a title that awarded an achievement and then exited could
+         * lose it, and nothing downstream could observe the award either.
+         */
         public void EndAwardAchievement(IAsyncResult result)
         {
+            (result as Task)?.GetAwaiter().GetResult();
         }
 
         public void AwardAchievement(string achievementKey) => EndAwardAchievement(BeginAwardAchievement(achievementKey, null, null));
+
+        /* Loads the shipped name mapping from disk, so build it once rather than
+         * per award, but not before an award asks for it: constructing this
+         * touches the data root, and a static initializer that reads
+         * configuration would fault the whole type when it runs before the host
+         * has set one.
+         */
+        private static TrueAchievements.GameToKey? _researcher;
+        private static TrueAchievements.GameToKey Researcher =>
+            _researcher ??= new TrueAchievements.GameToKey();
 
         private static readonly FriendCollection EmptyFriends = new FriendCollection();
         private static readonly GameDefaults DefaultGameDefaults = new GameDefaults();
