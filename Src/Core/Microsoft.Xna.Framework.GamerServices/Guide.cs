@@ -21,15 +21,35 @@ namespace Microsoft.Xna.Framework.GamerServices
         {
             return Task.Run(async () =>
             {
+                string? result;
+
                 IsVisible = true;
-
-                string? result = await ShowInputBoxFunc(title, description, defaultText);
-                if (result == null)
+                try
                 {
-                    result = defaultText;
-                }
+                    /* A host that presents phone dialogs is optional: the
+                     * evaluation harness launches titles without one. Answer with
+                     * the default text rather than dereferencing a null delegate,
+                     * so the title carries on instead of waiting for a prompt
+                     * nobody can present.
+                     */
+                    Func<string, string, string, Task<string?>> show = ShowInputBoxFunc;
+                    result = show == null
+                        ? defaultText
+                        : await show(title, description, defaultText);
 
-                IsVisible = false;
+                    if (result == null)
+                    {
+                        result = defaultText;
+                    }
+                }
+                finally
+                {
+                    /* Always lower this. Titles gate their input handling on
+                     * Guide.IsVisible, so leaving it raised after a failure stops
+                     * a title responding to anything while it keeps rendering.
+                     */
+                    IsVisible = false;
+                }
 
                 if (callback != null)
                 {
@@ -52,11 +72,22 @@ namespace Microsoft.Xna.Framework.GamerServices
 
             return Task.Run(async () =>
             {
+                int result;
+
                 IsVisible = true;
-
-                int result = await ShowMessageBoxFunc(title, text, buttons, focusButton, icon);
-
-                IsVisible = false;
+                try
+                {
+                    // No host to present the dialog: answer with the focused button.
+                    Func<string, string, IEnumerable<string>, int, MessageBoxIcon, Task<int>> show = ShowMessageBoxFunc;
+                    result = show == null
+                        ? focusButton
+                        : await show(title, text, buttons, focusButton, icon);
+                }
+                finally
+                {
+                    // See BeginShowKeyboardInput: this must come down on every path.
+                    IsVisible = false;
+                }
 
                 if (callback != null)
                 {
