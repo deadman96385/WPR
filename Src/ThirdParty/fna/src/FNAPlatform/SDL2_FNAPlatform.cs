@@ -38,6 +38,17 @@ namespace Microsoft.Xna.Framework
 		private static bool SupportsGlobalMouse;
 		private static bool PhoneBackButtonPressed = false;
 
+		/* The phone's back button is a momentary press, not something a title
+		 * holds down, and it is reported for the frame it happened in. Reporting
+		 * it for as long as a key is held instead gives a title several frames of
+		 * "pressed" from one press, and each consumer takes its own turn: Tiger
+		 * Woods closes its dialog on the first frame and then backs out of the
+		 * menu behind it on the next, from a single tap of the key.
+		 *
+		 * Hold the press here and hand it over for exactly one frame.
+		 */
+		private static bool PhoneBackButtonPending = false;
+
 		#endregion
 
 		#region Game Objects
@@ -876,9 +887,10 @@ namespace Microsoft.Xna.Framework
 				// Keyboard
 				if (evt.type == SDL.SDL_EventType.SDL_KEYDOWN)
 				{
-					if (IsPhoneBackButton(evt.key.keysym.sym))
+					// Auto-repeat is a keyboard behaviour; the phone button has none.
+					if (IsPhoneBackButton(evt.key.keysym.sym) && evt.key.repeat == 0)
 					{
-						PhoneBackButtonPressed = true;
+						PhoneBackButtonPending = true;
 					}
 
 					Keys key = ToXNAKey(ref evt.key.keysym);
@@ -915,10 +927,8 @@ namespace Microsoft.Xna.Framework
 				}
 				else if (evt.type == SDL.SDL_EventType.SDL_KEYUP)
 				{
-					if (IsPhoneBackButton(evt.key.keysym.sym))
-					{
-						PhoneBackButtonPressed = false;
-					}
+					/* Releasing changes nothing: the press is handed over for one
+					 * frame regardless of how long the key was held. */
 
 					Keys key = ToXNAKey(ref evt.key.keysym);
 					if (Keyboard.keys.Remove(key))
@@ -1226,6 +1236,12 @@ namespace Microsoft.Xna.Framework
 					break;
 				}
 			}
+
+			/* Hand any back press over for exactly this frame. Every press
+			 * gathered above is reported once and then gone, whether the key was
+			 * tapped or held, which is how the phone's button behaves. */
+			PhoneBackButtonPressed = PhoneBackButtonPending;
+			PhoneBackButtonPending = false;
 		}
 
 		private unsafe static int MeasureStringLength(byte* ptr)
