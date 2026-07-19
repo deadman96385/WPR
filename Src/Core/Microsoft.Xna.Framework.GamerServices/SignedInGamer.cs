@@ -84,29 +84,50 @@ namespace Microsoft.Xna.Framework.GamerServices
         {
             return Task.Run(async () =>
             {
+                string productId = Application.Current.ProductId;
+
                 List<Achievement> achievementStored = await AchievementContext.Current!.Achievements!
-                    .Where(x => x.OwnProductId == Application.Current.ProductId)
+                    .Where(x => x.OwnProductId == productId)
                     .ToListAsync();
 
-                if (achievementStored.Count == 0)
-                {
-                    AchievementCollection collection = new AchievementCollection();
-
-                    if (callback != null)
-                    {
-                        var compSource = new TaskCompletionSource<AchievementCollection>(asyncState);
-                        compSource.SetResult(collection);
-
-                        callback(compSource.Task);
-                    }
-
-                    return collection;
-                }
+                /* The store holds only what this title has awarded. Live returned
+                 * the whole set, and titles draw their achievements screen from
+                 * it, so start from the definition and let the store supply the
+                 * earned state. Without a definition the stored rows are still
+                 * all there is to report.
+                 */
+                IReadOnlyList<AchievementDefinition> defined =
+                    AchievementDefinitions.ForProduct(productId);
 
                 AchievementCollection coll = new AchievementCollection();
-                foreach (Achievement achiQueried in achievementStored)
+
+                if (defined.Count > 0)
                 {
-                    coll.Add(achiQueried);
+                    foreach (AchievementDefinition definition in defined)
+                    {
+                        Achievement? earned = achievementStored.Find(stored =>
+                            string.Equals(stored.Key, definition.Key, StringComparison.Ordinal));
+
+                        coll.Add(earned ?? new Achievement
+                        {
+                            Key = definition.Key,
+                            Name = definition.Name ?? definition.Key,
+                            Description = definition.Description ?? string.Empty,
+                            HowToEarn = definition.Description ?? string.Empty,
+                            GamerScore = definition.GamerScore,
+                            OwnProductId = productId,
+                            DisplayBeforeEarned = true,
+                            IsEarned = false,
+                            _IconPath = string.Empty,
+                        });
+                    }
+                }
+                else
+                {
+                    foreach (Achievement achiQueried in achievementStored)
+                    {
+                        coll.Add(achiQueried);
+                    }
                 }
 
                 var completeSource = new TaskCompletionSource<AchievementCollection>(asyncState);

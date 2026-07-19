@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "The achievement set a title's Live definition would have returned offline.",
+    "Titles enumerate the whole set - earned and unearned - to draw an achievements",
+    "screen, and the store on its own only ever holds what a title has awarded, so",
+    "a fresh install would otherwise hand back nothing.",
+    "",
+    "This file is consulted first and is deliberately empty. Keys are now recovered",
+    "from the title's own assemblies at install by WPR.AchievementKeyMiner, which",
+    "reads 137 of the 171 XNA titles in the corpus - including all five this file",
+    "used to carry by hand, key for key.",
+    "",
+    "Add a product here when mining cannot answer for it. Two kinds cannot:",
+    "a title whose keys the walk does not reach, and a title that reads its key",
+    "back off GamerServices.Achievement.Key and re-awards what this emulator handed",
+    "it - the second declares no key anywhere in its xap, so no walk will ever find",
+    "one. An install that mines nothing and still calls the achievement API logs a",
+    "warning naming the product, which is where the ones worth adding show up.",
+    "",
+    "An entry wins over the mined set for that product, so adding one also freezes",
+    "it: a later miner improvement cannot correct a key written here. Prefer fixing",
+    "the miner where the shape is recoverable, and keep this for the shapes that",
+    "are not.",
+    "",
+    "Only 'key' is required, and it has to be the exact string the title passes to",
+    "AwardAchievement - it is what the title indexes the set by. 'name',",
+    "'description' and 'gamerScore' are optional and exist because they are the one",
+    "thing mining cannot recover: no xap carries them, since the phone got them",
+    "from Live. Leave them out rather than guessing. An omitted name falls back to",
+    "the key, which is wrong to read but true; an invented one reads as fact.",
+    "",
+    "The example below is not a real title and never matches one - the all-zero",
+    "product id is reserved for this illustration."
+  ],
+  "products": [
+    {
+      "productId": "00000000-0000-0000-0000-000000000000",
+      "title": "Example - not a real title, shown for the format only",
+      "source": "Where the keys came from: the type and member they were read out of, so the next reader can check the claim rather than trust it",
+      "achievements": [
+        { "key": "FIRST_BLOOD" },
+        {
+          "key": "MARATHON",
+          "name": "Marathon",
+          "description": "Finish every level without continuing.",
+          "gamerScore": 50
+        }
+      ]
+    }
+  ]
+}

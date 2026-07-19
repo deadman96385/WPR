@@ -43,19 +43,27 @@ namespace Microsoft.Xna.Framework.GamerServices
          * awarded and has no artwork behind it, and a stored icon can go missing
          * with the data root. Titles enumerate achievements and call this while
          * building their list, so throwing here takes down that whole pass over
-         * a picture. Report the absence instead and let the caller decide.
+         * a picture.
+         *
+         * Reporting the absence was the earlier contract, and the caller has
+         * nowhere to put that answer: Plants vs. Zombies passes the result
+         * straight to Texture2D.FromStream inside AchievementItem's constructor,
+         * so a null throws out of the first item and leaves its list empty,
+         * which is the same blank selector screen a missing definition caused.
+         * Stand in for the artwork instead, and keep the absence visible by
+         * standing in with something plainly not the title's own icon.
          */
         public Stream? GetPicture()
         {
             if (string.IsNullOrEmpty(_IconPath))
             {
-                return null;
+                return AchievementDefinitions.OpenPlaceholderPicture();
             }
 
             string path = Configuration.Current!.DataPath(_IconPath);
             if (!File.Exists(path))
             {
-                return null;
+                return AchievementDefinitions.OpenPlaceholderPicture();
             }
 
             return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);

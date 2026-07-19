@@ -24,6 +24,12 @@
     <Folder Include="Migrations\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The offline achievement set and the stand-in icon travel with the
+         assembly, so no install step has to place them in a data root. -->
+    <EmbeddedResource Include="Assets\achievement-definitions.json" />
+    <EmbeddedResource Include="Assets\achievement-placeholder.png" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Lets the tests rebind the achievement database to a temporary data root. -->
     <InternalsVisibleTo Include="WPR.IntegrationTests" />
   </ItemGroup>
