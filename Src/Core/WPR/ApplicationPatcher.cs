@@ -18,7 +18,9 @@ namespace WPR
 {
     public class ApplicationPatcher
     {
-        public static int Version => 6;
+        // 7: public members whose type XmlSerializer cannot construct are marked
+        //    [XmlIgnore], so a serializer for the containing type can be built.
+        public static int Version => 7;
 
         private AssemblyNameReference FNACompRef;
         private AssemblyNameReference FNARef;
@@ -494,6 +496,125 @@ namespace WPR
 
         }//ApplicationPatcher
 
+        /* XmlSerializer builds its whole type map up front and refuses any public
+         * member whose type it cannot construct - even a member that never appears
+         * in a document. The phone's serializer validated lazily, so an engine
+         * that hangs an XNA graphics object off a serializable content type worked
+         * there and throws here. FlatRedBall's SpriteGridSave exposes a public
+         * Texture2D field, marked with its own [ExternalInstance] rather than
+         * [XmlIgnore], and Fusion Sentient constructs a serializer for the
+         * containing scene type before it can draw anything. No .scnx in that
+         * package contains the element.
+         *
+         * Marking such a member [XmlIgnore] cannot lose anything that worked. A
+         * type with no parameterless constructor could never have been read back
+         * whatever the platform, and without this no serializer for the containing
+         * type can be built at all, which fails the whole title rather than one
+         * member.
+         */
+        private static int PatchUnconstructableXmlMembers(ModuleDefinition module)
+        {
+            MethodReference? xmlIgnoreCtor = null;
+            int marked = 0;
+
+            bool AlreadyIgnored(ICustomAttributeProvider member) =>
+                member.HasCustomAttributes && member.CustomAttributes.Any(attribute =>
+                    attribute.AttributeType.FullName == typeof(XmlIgnoreAttribute).FullName);
+
+            void MarkIgnored(ICustomAttributeProvider member)
+            {
+                xmlIgnoreCtor ??= module.ImportReference(
+                    typeof(XmlIgnoreAttribute).GetConstructor(Type.EmptyTypes));
+                member.CustomAttributes.Add(new CustomAttribute(xmlIgnoreCtor));
+                marked++;
+            }
+
+            foreach (TypeDefinition type in module.GetTypes())
+            {
+                foreach (FieldDefinition field in type.Fields)
+                {
+                    if (!field.IsPublic || field.IsStatic || AlreadyIgnored(field))
+                    {
+                        continue;
+                    }
+
+                    if (IsUnconstructableForXml(field.FieldType))
+                    {
+                        MarkIgnored(field);
+                    }
+                }
+
+                foreach (PropertyDefinition property in type.Properties)
+                {
+                    if (property.GetMethod == null || !property.GetMethod.IsPublic ||
+                        property.GetMethod.IsStatic || AlreadyIgnored(property))
+                    {
+                        continue;
+                    }
+
+                    if (IsUnconstructableForXml(property.PropertyType))
+                    {
+                        MarkIgnored(property);
+                    }
+                }
+            }
+
+            return marked;
+        }
+
+        /* XmlSerializer looks through arrays and generic collections to the thing
+         * it would have to build, so this does the same before asking whether that
+         * type has the parameterless constructor it requires. Anything that cannot
+         * be resolved is left alone: not patching leaves the title exactly as it
+         * was, while guessing could suppress a member that serialized fine.
+         */
+        private static bool IsUnconstructableForXml(TypeReference type)
+        {
+            while (type is ArrayType array)
+            {
+                type = array.ElementType;
+            }
+
+            if (type is GenericInstanceType generic)
+            {
+                if (generic.GenericArguments.Count != 1)
+                {
+                    return false;
+                }
+
+                return IsUnconstructableForXml(generic.GenericArguments[0]);
+            }
+
+            if (type.IsPrimitive || type.IsGenericParameter)
+            {
+                return false;
+            }
+
+            TypeDefinition? resolved;
+            try
+            {
+                resolved = type.Resolve();
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (resolved == null || resolved.IsValueType || resolved.IsInterface || !resolved.IsClass)
+            {
+                return false;
+            }
+
+            if (resolved.FullName == "System.Object" || resolved.FullName == "System.String")
+            {
+                return false;
+            }
+
+            return !resolved.Methods.Any(method =>
+                method.IsConstructor && method.IsPublic && !method.IsStatic &&
+                method.Parameters.Count == 0);
+        }
+
         private void PatchRelaxedXmlNullableAttribTextSerialize(ModuleDefinition? module)
         {
             Queue<TypeDefinition> typeScanQueue = new Queue<TypeDefinition>();
@@ -750,6 +871,7 @@ namespace WPR
 
             //RnD
             PatchRelaxedXmlNullableAttribTextSerialize(module);
+            PatchUnconstructableXmlMembers(module);
 
             // Add AssemblyReferences
             module.AssemblyReferences.Add(FNACompRef);
