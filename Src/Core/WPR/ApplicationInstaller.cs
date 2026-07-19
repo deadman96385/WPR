@@ -261,7 +261,9 @@ namespace WPR
 
                 app = new Application()
                 {
-                    Name = titleAttrib.Value,
+                    // A localised name is a pointer into a resource DLL the XAP
+                    // ships, not a name; follow it while the archive is open.
+                    Name = LocalizedResourceName.Resolve(titleAttrib.Value, archive),
                     ApplicationType = runtimeTypeParsed,
                     Version = versionAttrib.Value,
                     IconPath = (iconPath == null) ? "" : Path.Combine(productStoreFolderRelative, iconPath),
