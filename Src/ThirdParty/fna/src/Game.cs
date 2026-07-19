@@ -236,6 +236,14 @@ namespace Microsoft.Xna.Framework
 		public event EventHandler<EventArgs> Disposed;
 		public event EventHandler<EventArgs> Exiting;
 
+		/* Raised once, after Initialize and LoadContent have run and before the
+		 * first Activated. The phone always raised its Launching event ahead of
+		 * any activation, and titles depend on that order: a title's Activated
+		 * handler may read state that only its Launching handler creates.
+		 * Deriving Launching from Activated inverts it, so the host hooks this.
+		 */
+		public event EventHandler<EventArgs> Starting;
+
 		#endregion
 
 		#region Public Constructor
@@ -999,6 +1007,24 @@ namespace Microsoft.Xna.Framework
 		private void BeforeLoop()
 		{
 			currentAdapter = FNAPlatform.RegisterGame(this);
+
+			/* Must run before IsActive, which raises Activated. A handler that
+			 * throws is reported rather than propagated: it would otherwise skip
+			 * activation and the touch probe below, which is a worse state than
+			 * the one it is reporting.
+			 */
+			if (Starting != null)
+			{
+				try
+				{
+					Starting(this, EventArgs.Empty);
+				}
+				catch (Exception ex)
+				{
+					SwallowedExceptionLog.Report("Game.Starting", ex);
+				}
+			}
+
 			IsActive = true;
 
 			// Perform initial check for a touch device

@@ -143,7 +143,14 @@ namespace WPR
                     GraphicsDeviceManager2.RequestOrientation = requestOrientation;
                     GamerServicesDispatcher.WindowHandle = obj.Window.Handle;
 
-                    obj.Activated += (obj, args) =>
+                    /* Launching must reach the title before Activated does. It used
+                     * to hang off Activated, which put it behind the title's own
+                     * Activated handler in the same multicast delegate, so a title
+                     * that reads launch-created state from Activated threw, and the
+                     * throw stopped the delegate before Launching was ever raised.
+                     * Lode Runner never left a blank screen for exactly that reason.
+                     */
+                    obj.Starting += (obj, args) =>
                     {
                         PhoneApplicationService.Current!.HandleApplicationStart(true);
                     };
