@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
@@ -84,6 +85,25 @@ namespace Microsoft.Xna.Framework.GamerServices
 
         public override string ToString() => Gamertag;
 
+        /* There is no partner token without a Live session, so this fails
+         * offline and that answer is truthful. What it must not do is fail on
+         * the caller's stack.
+         *
+         * The phone reached a Live service over the network here, so a title's
+         * completion callback could not possibly have run before Begin
+         * returned. Invoking it inline puts it on the caller's stack instead,
+         * and because the operation always fails offline, the failure threw
+         * back out through Begin into whatever called it.
+         *
+         * That is not a cosmetic difference. Fusion Sentient asks for a token
+         * from its SignedIn handler, and its callback calls EndGetPartnerToken
+         * with no guard, so the throw unwound out of GamerSignedInCallback
+         * before its next statement - GetFriendsList - could run, then out of
+         * the SignedIn multicast, abandoning any handler queued behind it, and
+         * on into GamerServicesDispatcher.Update, discarding the rest of the
+         * pending queue. One unavailable service silently cost the title an
+         * unrelated call it always made on the phone.
+         */
         public static IAsyncResult BeginGetPartnerToken(
           string audienceUri,
           AsyncCallback callback,
@@ -93,8 +113,56 @@ namespace Microsoft.Xna.Framework.GamerServices
                 TaskCreationOptions.RunContinuationsAsynchronously);
             source.SetException(new InvalidOperationException(
                 "The partner-token service is unavailable while running offline."));
-            callback?.Invoke(source.Task);
+            CompleteOffCallerStack(source.Task, callback);
             return source.Task;
+        }
+
+        /* Raise a completion where the phone raised it - on a pool thread,
+         * after Begin has returned - and contain what the callback throws.
+         *
+         * Containment is required rather than tidy. By the time a callback
+         * runs there is no caller left to receive an exception, and an
+         * unhandled one on a pool thread ends the process. A title that throws
+         * inside its own completion handler is still a real finding, so it is
+         * recorded instead of dropped; it goes to the log rather than to
+         * standard error because it is not an exception the game loop
+         * swallowed, and reporting it as one would misattribute it.
+         */
+        private static void CompleteOffCallerStack<T>(
+            Task<T> task,
+            AsyncCallback? callback)
+        {
+            if (callback == null)
+            {
+                /* The synchronous wrapper observes the fault itself through
+                 * End. Observe it here too, so a caller that abandons the
+                 * operation does not leave a faulted task unobserved.
+                 */
+                task.ContinueWith(
+                    static completed => { _ = completed.Exception; },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+                return;
+            }
+
+            task.ContinueWith(
+                completed =>
+                {
+                    try
+                    {
+                        callback(completed);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(LogCategory.GamerServices,
+                            "Title callback threw while completing an " +
+                            $"asynchronous Gamer operation:\n{ex}");
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
         }
 
         public static string EndGetPartnerToken(IAsyncResult result) =>
