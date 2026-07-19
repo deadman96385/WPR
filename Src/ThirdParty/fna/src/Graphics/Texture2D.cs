@@ -123,13 +123,6 @@ namespace Microsoft.Xna.Framework.Graphics
 			{
 				//Experimental! RnD / TEMP
 
-				
-
-				if (format == SurfaceFormat.Bgra4444)
-				{
-                    format = SurfaceFormat.Color;
-                }
-
 				//if (format != SurfaceFormat.Color)
 				//{
 				//format = SurfaceFormat.Dxt5;//.NormalizedByte2;
