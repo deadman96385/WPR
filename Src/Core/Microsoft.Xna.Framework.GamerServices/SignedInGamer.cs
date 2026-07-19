@@ -218,30 +218,48 @@ namespace Microsoft.Xna.Framework.GamerServices
 
                 await AchievementContext.Current!.SaveChangesAsync();
 
+                /* Announcing the award is cosmetic, and it is already saved above,
+                 * so a host with nowhere to show it must not cost the award.
+                 * NativeUI.NotificationManager is null by design on Linux and
+                 * macOS, and on Windows until a host calls NativeUI.Initialize -
+                 * which the evaluation harness never does. Dereferencing it
+                 * unconditionally therefore faulted on every award under the
+                 * harness, on a thread the title cannot see, which is exactly the
+                 * shape that hides for a long time.
+                 */
                 try
                 {
-                    Achievement announced = achievements[0];
-                    var notification = new DesktopNotifications.Notification()
+                    var notifier = NativeUI.NotificationManager;
+                    if (notifier == null)
                     {
-                        Title = Properties.Resources.AchievementUnlocked,
-                        Body = announced.GamerScore > 0
-                            ? $"{announced.GamerScore}G - {announced.Name}"
-                            : announced.Name,
-                        SoundUri = "AchievementUnlocked"
-                    };
-
-                    // Only point at artwork that is actually there.
-                    if (!string.IsNullOrEmpty(announced._IconPath))
-                    {
-                        string iconPath = Configuration.Current!.DataPath(announced._IconPath);
-                        if (File.Exists(iconPath))
-                        {
-                            notification.ImagePath = iconPath;
-                        }
+                        Log.Info(LogCategory.GamerServices,
+                            "No notification host; award recorded without announcing it.");
                     }
+                    else
+                    {
+                        Achievement announced = achievements[0];
+                        var notification = new DesktopNotifications.Notification()
+                        {
+                            Title = Properties.Resources.AchievementUnlocked,
+                            Body = announced.GamerScore > 0
+                                ? $"{announced.GamerScore}G - {announced.Name}"
+                                : announced.Name,
+                            SoundUri = "AchievementUnlocked"
+                        };
 
-                    await NativeUI.NotificationManager.ShowNotification(
-                        notification, DateTime.Now + TimeSpan.FromDays(1));
+                        // Only point at artwork that is actually there.
+                        if (!string.IsNullOrEmpty(announced._IconPath))
+                        {
+                            string iconPath = Configuration.Current!.DataPath(announced._IconPath);
+                            if (File.Exists(iconPath))
+                            {
+                                notification.ImagePath = iconPath;
+                            }
+                        }
+
+                        await notifier.ShowNotification(
+                            notification, DateTime.Now + TimeSpan.FromDays(1));
+                    }
                 }
                 catch (Exception ex)
                 {
