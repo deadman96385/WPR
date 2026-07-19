@@ -35,6 +35,13 @@ namespace Microsoft.Xna.Framework
 			PackagedFileIndexes = new ConcurrentDictionary<string, Lazy<IReadOnlyDictionary<string, string>>>(
 				OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
+		/* Formats the content loader can read straight from a stream when what it
+		 * opened is not an XNB. DDS is included because it has its own reader
+		 * there; the rest go through Texture2D.FromStream.
+		 */
+		private static readonly string[] RawAssetExtensions =
+			{ ".png", ".jpg", ".jpeg", ".dds", ".bmp" };
+
 		#region Public Static Methods
 
 		public static Stream OpenStream(string name)
@@ -228,6 +235,30 @@ namespace Microsoft.Xna.Framework
 				if (index.TryGetValue(fileName, out string uniquePath) && !string.IsNullOrEmpty(uniquePath))
 				{
 					return uniquePath;
+				}
+
+				/* A package can ship a raw asset where the title asks for a built
+				 * one. Fling requests Content\Default-wp7.xnb and the package
+				 * holds Content\png\Default-wp7.png; the content loader already
+				 * reads a raw image when the stream turns out not to be an XNB,
+				 * so the name is the only thing missing. Only a uniquely named
+				 * file is accepted, exactly as above, so this cannot pick a
+				 * different asset that happens to share a stem.
+				 */
+				if (".xnb".Equals(Path.GetExtension(fileName), StringComparison.OrdinalIgnoreCase))
+				{
+					string stem = Path.GetFileNameWithoutExtension(fileName);
+					if (!string.IsNullOrEmpty(stem))
+					{
+						foreach (string extension in RawAssetExtensions)
+						{
+							if (index.TryGetValue(stem + extension, out string rawPath) &&
+								!string.IsNullOrEmpty(rawPath))
+							{
+								return rawPath;
+							}
+						}
+					}
 				}
 			}
 
