@@ -168,6 +168,27 @@ namespace WPR
                                     $"Normalizing phone backbuffer format {presentation.BackBufferFormat} to Color");
                                 presentation.BackBufferFormat = SurfaceFormat.Color;
                             }
+
+                            /* The phone had one screen, so a title asking for
+                             * fullscreen was asking for 480x800, not for the
+                             * desktop. Honouring it literally gives a window the
+                             * width of every monitor attached - KenKen requests
+                             * 480x800 fullscreen and was drawn across 3840x1080,
+                             * which is also why a tap aimed at its prompt landed
+                             * nowhere near it. A phone title runs windowed at the
+                             * size it asked for, the way a desktop game defaults.
+                             * GraphicsDeviceManager2 already refuses the flag when
+                             * a title sets it through the manager; this catches the
+                             * ones that set it on the presentation parameters, and
+                             * runs last because the host subscribes after the title.
+                             */
+                            if (presentation.IsFullScreen)
+                            {
+                                Log.Info(LogCategory.AppList,
+                                    "Normalizing phone fullscreen request to a windowed " +
+                                    $"{presentation.BackBufferWidth}x{presentation.BackBufferHeight} surface");
+                                presentation.IsFullScreen = false;
+                            }
 #endif
                             Log.Info(LogCategory.AppList,
                                 $"Presentation parameters: {presentation.BackBufferWidth}x{presentation.BackBufferHeight}, " +
