@@ -678,6 +678,7 @@ namespace WPR
 
             FoldMetadataTokenReads(module);
             RedirectReflectiveFieldReads(module);
+            RedirectAssemblyTypeLookups(module);
 
             assemblyData.Name.Name = AssemblyNameStandardization.Process(assemblyData.Name.Name);
 
@@ -942,6 +943,69 @@ namespace WPR
                     instruction.OpCode = OpCodes.Call;
                     instruction.Operand = shim;
                     redirected++;
+                }
+            }
+
+            return redirected;
+        }
+
+        // Route assembly-scoped type lookups through the shim that also consults
+        // the core library, the way the phone's reflection resolved an
+        // unqualified BCL name. Both calls are an Assembly receiver and a single
+        // string, which is already the static shim's parameter order, so as with
+        // the field reads only the opcode and the operand change.
+        internal static int RedirectAssemblyTypeLookups(ModuleDefinition module)
+        {
+            const string assemblyGetType =
+                "System.Type System.Reflection.Assembly::GetType(System.String)";
+            const string assemblyCreateInstance =
+                "System.Object System.Reflection.Assembly::CreateInstance(System.String)";
+
+            MethodReference? typeShim = null;
+            MethodReference? instanceShim = null;
+            int redirected = 0;
+
+            foreach (MethodDefinition method in module.GetTypes().SelectMany(type => type.Methods))
+            {
+                if (!method.HasBody)
+                {
+                    continue;
+                }
+
+                foreach (Instruction instruction in method.Body.Instructions)
+                {
+                    if (instruction.OpCode != OpCodes.Callvirt && instruction.OpCode != OpCodes.Call)
+                    {
+                        continue;
+                    }
+
+                    if (instruction.Operand is not MethodReference called)
+                    {
+                        continue;
+                    }
+
+                    if (called.FullName == assemblyGetType)
+                    {
+                        typeShim ??= module.ImportReference(
+                            typeof(WPR.WindowsCompability.Reflection2).GetMethod(
+                                nameof(WPR.WindowsCompability.Reflection2.GetAssemblyType),
+                                new[] { typeof(System.Reflection.Assembly), typeof(string) }));
+
+                        instruction.OpCode = OpCodes.Call;
+                        instruction.Operand = typeShim;
+                        redirected++;
+                    }
+                    else if (called.FullName == assemblyCreateInstance)
+                    {
+                        instanceShim ??= module.ImportReference(
+                            typeof(WPR.WindowsCompability.Reflection2).GetMethod(
+                                nameof(WPR.WindowsCompability.Reflection2.CreateAssemblyInstance),
+                                new[] { typeof(System.Reflection.Assembly), typeof(string) }));
+
+                        instruction.OpCode = OpCodes.Call;
+                        instruction.Operand = instanceShim;
+                        redirected++;
+                    }
                 }
             }
 

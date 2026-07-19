@@ -8,7 +8,14 @@ using WPR.Common;
 
 namespace Microsoft.Xna.Framework.GamerServices
 {
-    public class LeaderboardReader
+    // IDisposable is part of the shape, not an implementation detail. Glow
+    // Artisan reads its friend-to-beat board inside a using, and the compiler's
+    // finally calls IDisposable.Dispose through the interface; without the
+    // interface on the type that dispatch throws EntryPointNotFoundException.
+    // That throw lands on the thread pool thread QueueCompletion runs the
+    // callback on, where nothing catches it, so it takes the process down
+    // rather than being swallowed the way a fault inside the game loop is.
+    public class LeaderboardReader : IDisposable
     {
         private const int OfflineCompletionDelayMilliseconds = 10;
         private ReadOnlyCollection<LeaderboardEntry>? _Entries;
@@ -158,5 +165,17 @@ namespace Microsoft.Xna.Framework.GamerServices
         public bool CanPageDown => false;
 
         public bool CanPageUp => false;
+
+        public bool IsDisposed { get; private set; }
+
+        public void Dispose()
+        {
+            // There is nothing offline to release. Recording the state keeps
+            // IsDisposed honest for a title that checks it, and disposing twice
+            // stays harmless, which is what the using in the read callback and
+            // the one in the page callbacks between them require.
+            IsDisposed = true;
+            GC.SuppressFinalize(this);
+        }
     }
 }
