@@ -21,7 +21,8 @@ namespace WPR
         // 7: public members whose type XmlSerializer cannot construct are marked
         //    [XmlIgnore], so a serializer for the containing type can be built.
         // 8: System.Data.Linq binds to the local-database implementation.
-        public static int Version => 8;
+        // 9: List<T>[] members are serialized through a jagged T[][] surrogate.
+        public static int Version => 9;
 
         private AssemblyNameReference FNACompRef;
         private AssemblyNameReference FNARef;
@@ -520,6 +521,135 @@ namespace WPR
 
         }//ApplicationPatcher
 
+        /* XmlSerializer cannot map an array whose element type is a generic
+         * collection: a List<T>[] member makes it throw a bare
+         * NullReferenceException out of its own code generator, carrying no frame
+         * of its own, so the fault reads as belonging to whichever title method
+         * called Serialize. Trivial Pursuit's SaveGameState holds its collected
+         * wedge colours that way, and creating the first save state is what
+         * stopped the title entering a game.
+         *
+         * The member is hidden from the serializer and a jagged T[][] exposed in
+         * its place, which maps correctly. Ignoring it outright would also let
+         * the serializer build, and would quietly drop the wedges from every
+         * saved game - a conversion costs a property and keeps the data.
+         */
+        private int PatchListArrayXmlMembers(ModuleDefinition module)
+        {
+            MethodReference? xmlIgnoreCtor = null;
+            MethodDefinition? toJagged = null;
+            MethodDefinition? fromJagged = null;
+            int converted = 0;
+
+            foreach (TypeDefinition type in module.GetTypes().ToList())
+            {
+                foreach (PropertyDefinition property in type.Properties.ToList())
+                {
+                    if (property.GetMethod == null || !property.GetMethod.IsPublic ||
+                        property.SetMethod == null || !property.SetMethod.IsPublic ||
+                        property.GetMethod.IsStatic)
+                    {
+                        continue;
+                    }
+
+                    TypeReference? element = ListArrayElement(property.PropertyType);
+                    if (element == null)
+                    {
+                        continue;
+                    }
+
+                    if (property.CustomAttributes.Any(attribute =>
+                        attribute.AttributeType.FullName == typeof(XmlIgnoreAttribute).FullName))
+                    {
+                        continue;
+                    }
+
+                    if (toJagged == null)
+                    {
+                        Type surrogate = typeof(WPR.StandardCompability.Serialization.XmlCollectionSurrogate);
+                        AssemblyDefinition surrogateAssembly = AssemblyDefinition.ReadAssembly(
+                            surrogate.Assembly.Location, new ReaderParameters { InMemory = true });
+                        TypeDefinition surrogateType = surrogateAssembly.MainModule.GetType(surrogate.FullName);
+                        toJagged = surrogateType.Methods.First(method => method.Name == "ToJagged");
+                        fromJagged = surrogateType.Methods.First(method => method.Name == "FromJagged");
+                    }
+
+                    var jaggedType = new ArrayType(new ArrayType(module.ImportReference(element)));
+
+                    var getter = new MethodDefinition(
+                        $"get_{property.Name}XmlSurrogate",
+                        MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
+                        jaggedType);
+                    ILProcessor getterIL = getter.Body.GetILProcessor();
+                    getterIL.Emit(OpCodes.Ldarg_0);
+                    getterIL.Emit(OpCodes.Call, property.GetMethod);
+                    getterIL.Emit(OpCodes.Call, Instantiate(module, toJagged!, element));
+                    getterIL.Emit(OpCodes.Ret);
+
+                    var setter = new MethodDefinition(
+                        $"set_{property.Name}XmlSurrogate",
+                        MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
+                        module.TypeSystem.Void)
+                    {
+                        Parameters = { new ParameterDefinition(jaggedType) }
+                    };
+                    ILProcessor setterIL = setter.Body.GetILProcessor();
+                    setterIL.Emit(OpCodes.Ldarg_0);
+                    setterIL.Emit(OpCodes.Ldarg_1);
+                    setterIL.Emit(OpCodes.Call, Instantiate(module, fromJagged!, element));
+                    setterIL.Emit(OpCodes.Call, property.SetMethod);
+                    setterIL.Emit(OpCodes.Ret);
+
+                    type.Methods.Add(getter);
+                    type.Methods.Add(setter);
+                    type.Properties.Add(new PropertyDefinition(
+                        $"{property.Name}XmlSurrogate", PropertyAttributes.None, jaggedType)
+                    {
+                        GetMethod = getter,
+                        SetMethod = setter
+                    });
+
+                    xmlIgnoreCtor ??= module.ImportReference(
+                        typeof(XmlIgnoreAttribute).GetConstructor(Type.EmptyTypes));
+                    property.CustomAttributes.Add(new CustomAttribute(xmlIgnoreCtor));
+                    converted++;
+                }
+            }
+
+            return converted;
+        }
+
+        private static MethodReference Instantiate(
+            ModuleDefinition module, MethodDefinition method, TypeReference argument)
+        {
+            var instance = new GenericInstanceMethod(module.ImportReference(method));
+            instance.GenericArguments.Add(module.ImportReference(argument));
+            return instance;
+        }
+
+        /* T of a List<T>[] member, or null if the type is not that shape. */
+        private static TypeReference? ListArrayElement(TypeReference type)
+        {
+            if (type is not ArrayType array || array.Rank != 1)
+            {
+                return null;
+            }
+
+            if (array.ElementType is not GenericInstanceType generic ||
+                generic.GenericArguments.Count != 1)
+            {
+                return null;
+            }
+
+            string name = generic.ElementType.FullName;
+            if (name != "System.Collections.Generic.List`1")
+            {
+                return null;
+            }
+
+            return generic.GenericArguments[0];
+        }
+
         /* XmlSerializer builds its whole type map up front and refuses any public
          * member whose type it cannot construct - even a member that never appears
          * in a document. The phone's serializer validated lazily, so an engine
@@ -895,6 +1025,7 @@ namespace WPR
 
             //RnD
             PatchRelaxedXmlNullableAttribTextSerialize(module);
+            PatchListArrayXmlMembers(module);
             PatchUnconstructableXmlMembers(module);
 
             // Add AssemblyReferences
