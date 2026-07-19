@@ -20,7 +20,8 @@ namespace WPR
     {
         // 7: public members whose type XmlSerializer cannot construct are marked
         //    [XmlIgnore], so a serializer for the containing type can be built.
-        public static int Version => 7;
+        // 8: System.Data.Linq binds to the local-database implementation.
+        public static int Version => 8;
 
         private AssemblyNameReference FNACompRef;
         private AssemblyNameReference FNARef;
@@ -402,6 +403,29 @@ namespace WPR
                 {
                     Reference = WindowsCompRef,
                     NewNamespace = "WPR.WindowsCompability"
+                }
+                },
+                /* The phone's local-database types. Namespace and name are kept,
+                 * so only the assembly a title binds to changes.
+                 */
+                { "System.Data.Linq.DataContext", new TypePatchInfo()
+                {
+                    Reference = StandardCompRef
+                }
+                },
+                { "System.Data.Linq.Table`1", new TypePatchInfo()
+                {
+                    Reference = StandardCompRef
+                }
+                },
+                { "System.Data.Linq.Mapping.TableAttribute", new TypePatchInfo()
+                {
+                    Reference = StandardCompRef
+                }
+                },
+                { "System.Data.Linq.Mapping.ColumnAttribute", new TypePatchInfo()
+                {
+                    Reference = StandardCompRef
                 }
                 }
             };
