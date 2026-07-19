@@ -677,6 +677,7 @@ namespace WPR
             Mono.Cecil.ModuleDefinition module = assemblyData.MainModule;
 
             FoldMetadataTokenReads(module);
+            RedirectReflectiveFieldReads(module);
 
             assemblyData.Name.Name = AssemblyNameStandardization.Process(assemblyData.Name.Name);
 
@@ -900,6 +901,52 @@ namespace WPR
                 throw;
             }
         }//PatchDll
+
+        // Route reflective field reads through the shim that reports a missing
+        // target the way the phone does. A game's callvirt already has the
+        // FieldInfo below its argument, which is exactly the static shim's
+        // parameter order, so only the opcode and the operand change.
+        internal static int RedirectReflectiveFieldReads(ModuleDefinition module)
+        {
+            const string fieldGetValue =
+                "System.Object System.Reflection.FieldInfo::GetValue(System.Object)";
+
+            MethodReference? shim = null;
+            int redirected = 0;
+
+            foreach (MethodDefinition method in module.GetTypes().SelectMany(type => type.Methods))
+            {
+                if (!method.HasBody)
+                {
+                    continue;
+                }
+
+                foreach (Instruction instruction in method.Body.Instructions)
+                {
+                    if (instruction.OpCode != OpCodes.Callvirt && instruction.OpCode != OpCodes.Call)
+                    {
+                        continue;
+                    }
+
+                    if (instruction.Operand is not MethodReference called ||
+                        called.FullName != fieldGetValue)
+                    {
+                        continue;
+                    }
+
+                    shim ??= module.ImportReference(
+                        typeof(WPR.WindowsCompability.Reflection2).GetMethod(
+                            nameof(WPR.WindowsCompability.Reflection2.GetFieldValue),
+                            new[] { typeof(System.Reflection.FieldInfo), typeof(object) }));
+
+                    instruction.OpCode = OpCodes.Call;
+                    instruction.Operand = shim;
+                    redirected++;
+                }
+            }
+
+            return redirected;
+        }
 
         internal static int FoldMetadataTokenReads(ModuleDefinition module)
         {
