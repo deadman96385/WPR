@@ -52,7 +52,94 @@ namespace Microsoft.Xna.Framework
 				? safeName
 				: Path.Combine(TitleLocation.Path, safeName);
 			string resolvedName = ResolvePackagedPath(realName, TitleLocation.Path);
-			return File.OpenRead(resolvedName);
+			return new TitleStream(File.OpenRead(resolvedName));
+		}
+
+		#endregion
+
+		#region Private Title Package Stream
+
+		/* The phone's title package handed out streams whose Length still
+		 * answered after the stream had been closed, and titles depend on it.
+		 * Sonic CD's FileIO.CheckRSDKFile opens Data.rsdk, closes it, and then
+		 * calls LoadFile, whose first act is to read Length off that same closed
+		 * stream - on the success path, on every launch. File.OpenRead returns a
+		 * FileStream, which throws ObjectDisposedException there instead, so the
+		 * length is captured at open and outlives the handle.
+		 *
+		 * Only Length is kept alive. Reading a closed stream still fails, which
+		 * is what the phone did and what a title would be wrong to rely on.
+		 */
+		private sealed class TitleStream : Stream
+		{
+			private readonly Stream inner;
+			private readonly long length;
+
+			internal TitleStream(Stream inner)
+			{
+				this.inner = inner;
+				length = inner.Length;
+			}
+
+			public override bool CanRead
+			{
+				get { return inner.CanRead; }
+			}
+
+			public override bool CanSeek
+			{
+				get { return inner.CanSeek; }
+			}
+
+			public override bool CanWrite
+			{
+				get { return false; }
+			}
+
+			public override long Length
+			{
+				get { return length; }
+			}
+
+			public override long Position
+			{
+				get { return inner.Position; }
+				set { inner.Position = value; }
+			}
+
+			public override void Flush()
+			{
+				inner.Flush();
+			}
+
+			public override int Read(byte[] buffer, int offset, int count)
+			{
+				return inner.Read(buffer, offset, count);
+			}
+
+			public override long Seek(long offset, SeekOrigin origin)
+			{
+				return inner.Seek(offset, origin);
+			}
+
+			public override void SetLength(long value)
+			{
+				throw new NotSupportedException();
+			}
+
+			public override void Write(byte[] buffer, int offset, int count)
+			{
+				throw new NotSupportedException();
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					inner.Dispose();
+				}
+				base.Dispose(disposing);
+			}
 		}
 
 		#endregion
