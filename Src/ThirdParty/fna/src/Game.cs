@@ -93,6 +93,47 @@ namespace Microsoft.Xna.Framework
 			}
 		}
 
+		/* A phone task that launches another application - the media player,
+		 * the marketplace, the browser - took the foreground on the phone and
+		 * gave it back when the user came out of it, so the title saw
+		 * Deactivated and then Activated. Titles wait on that: Oregon Trail
+		 * plays its logo through MediaPlayerLauncher and its engine will not
+		 * queue anything to draw until Game1::m, cleared only in
+		 * OnDeactivated, is false.
+		 *
+		 * We have no application to launch, so the honest equivalent is a
+		 * foreground round trip of no duration. It is deferred to the loop
+		 * rather than run inside the task's Show(), because on the phone the
+		 * call returned before the app went to the background, and raising
+		 * Deactivated on the caller's stack would unwind through whatever the
+		 * title was doing when it asked.
+		 */
+		private static DateTime INTERNAL_foregroundReturnsAt = DateTime.MaxValue;
+		private static bool INTERNAL_foregroundLossPending;
+
+		public static void RequestForegroundRoundTrip(TimeSpan away)
+		{
+			INTERNAL_foregroundLossPending = true;
+			INTERNAL_foregroundReturnsAt = DateTime.UtcNow + away;
+		}
+
+		private void INTERNAL_PumpForegroundRoundTrip()
+		{
+			if (INTERNAL_foregroundLossPending)
+			{
+				INTERNAL_foregroundLossPending = false;
+				IsActive = false;
+				return;
+			}
+
+			if (INTERNAL_foregroundReturnsAt != DateTime.MaxValue &&
+				DateTime.UtcNow >= INTERNAL_foregroundReturnsAt)
+			{
+				INTERNAL_foregroundReturnsAt = DateTime.MaxValue;
+				IsActive = true;
+			}
+		}
+
 		private bool INTERNAL_isActive;
 		public bool IsActive
 		{
@@ -853,6 +894,15 @@ namespace Microsoft.Xna.Framework
             {
                 Debug.WriteLine("[ex] Game - FrameworkDispatcher Update : " + ex.Message);
             }
+
+			try
+			{
+				INTERNAL_PumpForegroundRoundTrip();
+			}
+			catch (Exception ex)
+			{
+				SwallowedExceptionLog.Report("Game.Update.ForegroundRoundTrip", ex);
+			}
 		}
 
 		protected virtual void OnExiting(object sender, EventArgs args)

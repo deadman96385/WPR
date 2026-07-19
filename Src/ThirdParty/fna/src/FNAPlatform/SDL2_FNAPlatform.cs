@@ -1068,8 +1068,21 @@ namespace Microsoft.Xna.Framework
 					}
 					else if (evt.window.windowEvent == SDL.SDL_WindowEventID.SDL_WINDOWEVENT_FOCUS_LOST)
 					{
-						//RnD
-						/*
+						/* This was commented out and marked RnD in the
+						 * wpr-dev 0.0.12 checkpoint, so IsActive could be set
+						 * true and never false, and the emulator could not
+						 * raise Deactivated at all.
+						 *
+						 * That is not a missing nicety. A phone title's
+						 * suspend path is where it saves, pauses, and - for
+						 * Oregon Trail - waits: it plays its logo through
+						 * MediaPlayerLauncher, which launches the media player
+						 * app and deactivates the game, and its engine's z::gu
+						 * returns early forever while Game1::m, cleared only
+						 * in OnDeactivated, is still true. Nothing was ever
+						 * queued to draw because the title was waiting to be
+						 * put in the background, which could not happen.
+						 */
 						game.IsActive = false;
 
 						if (SDL.SDL_GetCurrentVideoDriver() == "x11")
@@ -1079,7 +1092,6 @@ namespace Microsoft.Xna.Framework
 
 						// Give the screensaver back, we're not that important now.
 						SDL.SDL_EnableScreenSaver();
-						*/
 					}
 
 					// Window Resize

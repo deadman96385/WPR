@@ -155,6 +155,17 @@ namespace WPR
                         PhoneApplicationService.Current!.HandleApplicationStart(true);
                     };
 
+                    /* A phone task that launches another application takes the
+                     * foreground and gives it back. Only the host can join
+                     * those two: Microsoft.Phone cannot see the running game,
+                     * and the game cannot see the task. The loop performs the
+                     * round trip so it lands on the game thread, after the
+                     * task's Show() has returned - which is the order the
+                     * phone had.
+                     */
+                    Microsoft.Phone.Tasks.MediaPlayerLauncher.ForegroundLaunch =
+                        away => Game.RequestForegroundRoundTrip(away);
+
                     GraphicsDeviceManager? manager = obj.Services.GetService(typeof(IGraphicsDeviceManager)) as GraphicsDeviceManager;
                     if (manager != null)
                     {
